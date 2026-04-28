@@ -13,10 +13,11 @@ const SIZE = 320;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
 
-// 60本のティックは全て同じ長さ・太さ。外端を白丸の縁から少し内側に揃える。
+// 180本のティック (3倍密度)。全て同じ長さ・太さ。外端を白丸の縁から少し内側に揃える。
+const TICK_COUNT = 180;
 const FACE_R   = 160; // 白い円盤の半径 (= SIZE/2)
 const TICK_OUT = 152; // 外端
-const TICK_IN  = 129; // 内端 (長さ 23 = 以前の 34 の 2/3)
+const TICK_IN  = 129; // 内端 (長さ 23)
 
 export function Dial({
   phase,                 // "idle" | "running" | "paused" | "finished"
@@ -63,9 +64,9 @@ export function Dial({
         {/* 白い円盤 */}
         <circle cx={CX} cy={CY} r={FACE_R} fill="var(--surface)" />
 
-        {/* 60本のティック (全て同じ長さ・太さ) */}
-        {Array.from({ length: 60 }).map((_, i) => {
-          const deg = i * 6;
+        {/* TICK_COUNT 本のティック (全て同じ長さ・太さ) */}
+        {Array.from({ length: TICK_COUNT }).map((_, i) => {
+          const deg = (i * 360) / TICK_COUNT;
           const a = ((deg - 90) * Math.PI) / 180;
           const x1 = CX + TICK_IN  * Math.cos(a);
           const y1 = CY + TICK_IN  * Math.sin(a);
@@ -91,7 +92,7 @@ export function Dial({
               x2={x2}
               y2={y2}
               stroke={stroke}
-              strokeWidth={1.6}
+              strokeWidth={1.0}
               strokeLinecap="butt"
             />
           );

@@ -15,7 +15,7 @@ const MODE_KEY = "warmupTimer.mode"; // "piano" | "rooster"
 // ───────────────────────────────────────────────────────────
 const MIN_DURATION = 10;       // 10秒
 const MAX_DURATION = 3600;     // 60分
-const SNAP_SEC = 10;
+const SNAP_SEC = 1;            // 1秒刻みで設定可
 const HISTORY_KEY = "preWarningTimer.history";
 const LAST_KEY = "preWarningTimer.lastSetting";
 const DEFAULT_HISTORY = [30, 180, 540];   // 0:30 / 3:00 / 9:00
