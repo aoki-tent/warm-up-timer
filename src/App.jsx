@@ -420,7 +420,12 @@ export default function App() {
         maxWidth: 420,
         margin: "0 auto",
         height: "100%",
-        padding: "12px 14px",
+        // PWA (ホーム画面起動) では URL バーが消えてレイアウトが画面端まで広がるので、
+        // status bar / home indicator の safe-area inset を padding に足して避ける。
+        paddingTop:    "calc(12px + env(safe-area-inset-top))",
+        paddingRight:  "calc(14px + env(safe-area-inset-right))",
+        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+        paddingLeft:   "calc(14px + env(safe-area-inset-left))",
         boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
@@ -541,7 +546,8 @@ export default function App() {
           top: "50%",
           left: "50%",
           transform: "translate(-50%, -50%)",
-          width: "min(calc(100vw - 28px), 420px, calc(100dvh - 380px))",
+          // safe-area inset を縦の予約量に足す (PWA でも上下枠とぶつからない)
+          width: "min(calc(100vw - 28px), 420px, calc(100dvh - 380px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))",
           aspectRatio: "1 / 1",
         }}>
           <Dial
