@@ -462,7 +462,8 @@ export default function App() {
               letterSpacing: "0.02em",
               color: "var(--ink)",
               lineHeight: 1,
-              paddingTop: "0.20em",
+              paddingTop: "0.28em",   // フォント縦中央へ寄せる
+              paddingBottom: "0.04em",
             }}>
               WARM UP TIMER
             </h1>
@@ -474,7 +475,7 @@ export default function App() {
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               position: "relative",
-              padding: "10px 0",
+              padding: 0,
             }}>
               <ModeToggleCell
                 label="ROOSTER"
@@ -677,7 +678,8 @@ function ModeToggleCell({ label, active, onClick, disabled }) {
       style={{
         background: "transparent",
         border: "none",
-        padding: "8px 14px",
+        padding: "9px 14px 5px",      // 上下 +4 で文字を視覚的に枠中央へ
+        lineHeight: 1,
         textAlign: "center",
         fontFamily: "inherit",
         fontWeight: active ? 700 : 500,
@@ -742,7 +744,7 @@ function CenterTime({ sec, editing, editValue, onEditChange, onCommit, onCancel,
       fontVariantNumeric: "tabular-nums",
       // DIN Condensed Bold は ascender が高く descender がほぼ無いため、
       // flex center だと数字が光学的に上寄りになる。少しだけ下に押し下げる。
-      paddingTop: "0.10em",
+      paddingTop: "0.18em",
       display: "inline-flex",
       alignItems: "center",
     }}>
@@ -770,7 +772,7 @@ function ActionButton({ label, on, disabled, borderRight = false }) {
         background: "transparent",
         border: "none",
         borderRight: borderRight ? "2px solid var(--border)" : "none",
-        padding: "22px 14px 16px",
+        padding: "26px 14px 14px",
         fontFamily: "inherit",
         fontWeight: 800,
         fontSize: 34,
@@ -800,7 +802,7 @@ function HistoryCell({ sec, active, disabled, borderRight, onClick }) {
         color: active ? "var(--surface)" : disabled ? "var(--ink-dim)" : "var(--ink)",
         border: "none",
         borderRight: borderRight ? "2px solid var(--border)" : "none",
-        padding: "15px 10px 11px",
+        padding: "18px 10px 9px",
         fontFamily: "inherit",
         fontWeight: 700,
         fontSize: 22,
