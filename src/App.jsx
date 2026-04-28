@@ -448,7 +448,7 @@ export default function App() {
               background: "transparent",
               border: "none",
               borderBottom: showInfo ? "none" : "2px solid var(--border)",
-              padding: "14px 4px",
+              padding: "10px 4px",   // 上下14→10 で WARM UP セルを 8px 詰める
               cursor: "pointer",
               outline: "none",
               fontFamily: "inherit",
@@ -678,7 +678,7 @@ function ModeToggleCell({ label, active, onClick, disabled }) {
       style={{
         background: "transparent",
         border: "none",
-        padding: "9px 14px 5px",      // 上下 +4 で文字を視覚的に枠中央へ
+        padding: "13px 14px 9px",     // 5/4倍に拡大、+4 で文字中央キープ
         lineHeight: 1,
         textAlign: "center",
         fontFamily: "inherit",
@@ -772,7 +772,7 @@ function ActionButton({ label, on, disabled, borderRight = false }) {
         background: "transparent",
         border: "none",
         borderRight: borderRight ? "2px solid var(--border)" : "none",
-        padding: "32px 14px 22px",
+        padding: "28px 14px 18px",
         fontFamily: "inherit",
         fontWeight: 800,
         fontSize: 34,
@@ -802,7 +802,7 @@ function HistoryCell({ sec, active, disabled, borderRight, onClick }) {
         color: active ? "var(--surface)" : disabled ? "var(--ink-dim)" : "var(--ink)",
         border: "none",
         borderRight: borderRight ? "2px solid var(--border)" : "none",
-        padding: "6px 10px 2px",
+        padding: "10px 10px 6px",
         fontFamily: "inherit",
         fontWeight: 700,
         fontSize: 22,
