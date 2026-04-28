@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:       #dcd9d0;
+  --surface:  #f0ede5;
+  --ink:      #1a1a1a;
+  --ink-dim:  #b6b3a8;
+  --ink-mute: #6e6c64;
+  --border:   #1a1a1a;
+}
+
+html, body, #root {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  /* heavy: DIN Condensed Bold (macOSシステム) → Barlow Condensed fallback */
+  font-family: 'DIN Condensed', 'Barlow Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum", "lnum";
+}
+
+/* Mediumウェイトを使う細かいラベル類は Barlow Condensed のみ
+   (DIN Condensed は Bold しかないため、500 を指定しても Bold で出てしまう) */
+.font-medium-stack {
+  font-family: 'Barlow Condensed', 'Helvetica Neue Condensed', 'Arial Narrow', system-ui, sans-serif;
+}
+
+/* フッター用 Akkurat 近似 (Inter は Akkurat に最も近い無料フォント) */
+.font-akkurat {
+  font-family: 'Akkurat', 'Inter', 'Helvetica Neue', 'Arial', sans-serif;
+}
+
+@keyframes pausedBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.paused-blink { animation: pausedBlink 1.4s ease-in-out infinite; }
