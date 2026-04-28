@@ -458,11 +458,11 @@ export default function App() {
               margin: 0,
               textAlign: "center",
               fontWeight: 800,
-              fontSize: "clamp(38px, 10.8vw, 53px)",
+              fontSize: "clamp(46px, 13vw, 64px)",   // 1.2倍 (38→46 / 10.8vw→13vw / 53→64)
               letterSpacing: "0.02em",
               color: "var(--ink)",
               lineHeight: 1,
-              paddingTop: "0.28em",   // フォント縦中央へ寄せる
+              paddingTop: "0.28em",   // em ベースなので拡大しても中央配置キープ
               paddingBottom: "0.04em",
             }}>
               WARM UP TIMER
