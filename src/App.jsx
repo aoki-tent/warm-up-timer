@@ -506,70 +506,68 @@ export default function App() {
         {showInfo ? (
           <InfoBody />
         ) : (
-          /* 下ブロック: Buttons + History */
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {/* ボタン群 */}
+          <>
+            {/* ダイアル — flex フロー内の中央 item として配置。
+                上下のアイテム (top group / bottom group) と space-between で均等な間隔。 */}
             <div style={{
-              ...boxStyle(),
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              width: "min(100%, 420px, calc(100dvh - 380px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))",
+              margin: "0 auto",
+              aspectRatio: "1 / 1",
+              flex: "0 0 auto",
             }}>
-              <ActionButton {...primary} borderRight />
-              <ActionButton {...secondary} />
+              <Dial
+                phase={phase}
+                durationSec={durationSec}
+                remainingSec={remainingSec}
+                pulseCenter={phase === "paused"}
+                onTapCenter={beginEdit}
+                centerNode={
+                  <CenterTime
+                    sec={centerSec}
+                    editing={editing}
+                    editValue={editValue}
+                    onEditChange={setEditValue}
+                    onCommit={commitEdit}
+                    onCancel={cancelEdit}
+                    editRef={editInputRef}
+                  />
+                }
+              />
             </div>
 
-            {/* 履歴 */}
-            <div style={{
-              ...boxStyle(),
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-            }}>
-              {(history.length ? history : DEFAULT_HISTORY).slice(0, 3).map((sec, i) => (
-                <HistoryCell
-                  key={`${sec}_${i}`}
-                  sec={sec}
-                  active={phase === "idle" && durationSec === sec}
-                  disabled={phase !== "idle"}
-                  borderRight={i < 2}
-                  onClick={() => handleHistoryClick(sec)}
-                />
-              ))}
+            {/* 下ブロック: Buttons + History */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "0 0 auto" }}>
+              {/* ボタン群 */}
+              <div style={{
+                ...boxStyle(),
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+              }}>
+                <ActionButton {...primary} borderRight />
+                <ActionButton {...secondary} />
+              </div>
+
+              {/* 履歴 */}
+              <div style={{
+                ...boxStyle(),
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+              }}>
+                {(history.length ? history : DEFAULT_HISTORY).slice(0, 3).map((sec, i) => (
+                  <HistoryCell
+                    key={`${sec}_${i}`}
+                    sec={sec}
+                    active={phase === "idle" && durationSec === sec}
+                    disabled={phase !== "idle"}
+                    borderRight={i < 2}
+                    onClick={() => handleHistoryClick(sec)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
-
-      {/* ダイアル — viewport の正中央に絶対配置 (INFO中は非表示) */}
-      {!showInfo && (
-        <div style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          // safe-area inset を縦の予約量に足す (PWA でも上下枠とぶつからない)
-          width: "min(calc(100vw - 28px), 420px, calc(100dvh - 380px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))",
-          aspectRatio: "1 / 1",
-        }}>
-          <Dial
-            phase={phase}
-            durationSec={durationSec}
-            remainingSec={remainingSec}
-            pulseCenter={phase === "paused"}
-            onTapCenter={beginEdit}
-            centerNode={
-              <CenterTime
-                sec={centerSec}
-                editing={editing}
-                editValue={editValue}
-                onEditChange={setEditValue}
-                onCommit={commitEdit}
-                onCancel={cancelEdit}
-                editRef={editInputRef}
-              />
-            }
-          />
-        </div>
-      )}
     </div>
   );
 }
