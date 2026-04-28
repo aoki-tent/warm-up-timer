@@ -302,6 +302,46 @@ export default function App() {
     return () => clearTimeout(t);
   }, [phase, handleReset]);
 
+  // ── Screen Wake Lock: 実行中は画面スリープを抑止 ────
+  // iOS Safari 16.4+ / Chrome / Edge で動作。未対応ブラウザでは黙って no-op。
+  useEffect(() => {
+    if (phase !== "running") return;
+    if (typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
+
+    let lock = null;
+    let cancelled = false;
+
+    const acquire = async () => {
+      try {
+        const newLock = await navigator.wakeLock.request("screen");
+        if (cancelled) {
+          newLock.release().catch(() => {});
+          return;
+        }
+        lock = newLock;
+      } catch {
+        // 取得失敗 (権限なし等): 静かに諦める
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      // タブが見えなくなると wake lock は自動 release されるので、復帰時に取り直す
+      if (document.visibilityState === "visible" && !cancelled) {
+        acquire();
+      }
+    };
+
+    acquire();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (lock) lock.release().catch(() => {});
+      lock = null;
+    };
+  }, [phase]);
+
   // ── 数値入力モード ─────────────────────────────
   const beginEdit = () => {
     setEditValue(fmtMMSS(durationSec));
