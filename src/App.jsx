@@ -93,6 +93,7 @@ export default function App() {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [history, setHistory] = useState(loadHistory);
   const [mode, setMode] = useState(loadMode);                // "piano" | "rooster"
+  const [showInfo, setShowInfo] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [loadStatus, setLoadStatus] = useState("loading");
   const [, forceTick] = useState(0);
@@ -373,7 +374,8 @@ export default function App() {
         style={{ display: "none" }}
       />
       {/* 上下にピン留めされた帯 (header+sub / buttons+history)。
-          space-between で上下を画面の端に貼り付ける。 */}
+          space-between で上下を画面の端に貼り付ける。
+          INFO 表示中は上をヘッダーのみ + 説明文 (flex:1) に切り替え。 */}
       <div style={{
         maxWidth: 420,
         margin: "0 auto",
@@ -382,18 +384,31 @@ export default function App() {
         boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
+        justifyContent: showInfo ? "flex-start" : "space-between",
+        minHeight: 0,
       }}>
-        {/* 上ブロック: 横線3本 + 短い縦線で区切る (左右の枠線なし) */}
+        {/* 上ブロック: 横線で区切られたヘッダー */}
         <div style={{
           borderTop: "2px solid var(--border)",
           borderBottom: "2px solid var(--border)",
+          flex: "0 0 auto",
         }}>
-          {/* WARM UP TIMER (中段の横線で区切る) */}
-          <div style={{
-            padding: "14px 4px",
-            borderBottom: "2px solid var(--border)",
-          }}>
+          {/* WARM UP TIMER (タップで INFO 表示切替) */}
+          <button
+            type="button"
+            onClick={() => setShowInfo((v) => !v)}
+            style={{
+              display: "block",
+              width: "100%",
+              background: "transparent",
+              border: "none",
+              borderBottom: showInfo ? "none" : "2px solid var(--border)",
+              padding: "14px 4px",
+              cursor: "pointer",
+              outline: "none",
+              fontFamily: "inherit",
+            }}
+          >
             <h1 style={{
               margin: 0,
               textAlign: "center",
@@ -406,101 +421,109 @@ export default function App() {
             }}>
               WARM UP TIMER
             </h1>
-          </div>
+          </button>
 
-          {/* sub-row: ROOSTER | PIANO トグル (中央に短い縦線) */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            position: "relative",
-            padding: "10px 0",
-          }}>
-            <ModeToggleCell
-              label="ROOSTER"
-              active={mode === "rooster"}
-              onClick={() => handleModeChange("rooster")}
-              disabled={phase !== "idle"}
-            />
-            <ModeToggleCell
-              label="PIANO"
-              active={mode === "piano"}
-              onClick={() => handleModeChange("piano")}
-              disabled={phase !== "idle"}
-            />
-            {/* 短い縦線 (上下の横線に届かない高さ) */}
+          {/* sub-row: ROOSTER | PIANO トグル (INFO中は非表示) */}
+          {!showInfo && (
             <div style={{
-              position: "absolute",
-              left: "50%",
-              top: "30%",
-              bottom: "30%",
-              width: 2,
-              background: "var(--border)",
-              transform: "translateX(-50%)",
-              pointerEvents: "none",
-            }} />
-          </div>
-        </div>
-
-        {/* 下ブロック: Buttons + History */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {/* ボタン群 */}
-          <div style={{
-            ...boxStyle(),
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-          }}>
-            <ActionButton {...primary} borderRight />
-            <ActionButton {...secondary} />
-          </div>
-
-          {/* 履歴 */}
-          <div style={{
-            ...boxStyle(),
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-          }}>
-            {(history.length ? history : DEFAULT_HISTORY).slice(0, 3).map((sec, i) => (
-              <HistoryCell
-                key={`${sec}_${i}`}
-                sec={sec}
-                active={phase === "idle" && durationSec === sec}
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              position: "relative",
+              padding: "10px 0",
+            }}>
+              <ModeToggleCell
+                label="ROOSTER"
+                active={mode === "rooster"}
+                onClick={() => handleModeChange("rooster")}
                 disabled={phase !== "idle"}
-                borderRight={i < 2}
-                onClick={() => handleHistoryClick(sec)}
               />
-            ))}
-          </div>
+              <ModeToggleCell
+                label="PIANO"
+                active={mode === "piano"}
+                onClick={() => handleModeChange("piano")}
+                disabled={phase !== "idle"}
+              />
+              {/* 短い縦線 (上下の横線に届かない高さ) */}
+              <div style={{
+                position: "absolute",
+                left: "50%",
+                top: "30%",
+                bottom: "30%",
+                width: 2,
+                background: "var(--border)",
+                transform: "translateX(-50%)",
+                pointerEvents: "none",
+              }} />
+            </div>
+          )}
         </div>
+
+        {showInfo ? (
+          <InfoBody />
+        ) : (
+          /* 下ブロック: Buttons + History */
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* ボタン群 */}
+            <div style={{
+              ...boxStyle(),
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+            }}>
+              <ActionButton {...primary} borderRight />
+              <ActionButton {...secondary} />
+            </div>
+
+            {/* 履歴 */}
+            <div style={{
+              ...boxStyle(),
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+            }}>
+              {(history.length ? history : DEFAULT_HISTORY).slice(0, 3).map((sec, i) => (
+                <HistoryCell
+                  key={`${sec}_${i}`}
+                  sec={sec}
+                  active={phase === "idle" && durationSec === sec}
+                  disabled={phase !== "idle"}
+                  borderRight={i < 2}
+                  onClick={() => handleHistoryClick(sec)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ダイアル — viewport の正中央に絶対配置 (白丸の中心 = 画面中央) */}
-      <div style={{
-        position: "absolute",
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-        width: "min(calc(100vw - 28px), 420px, calc(100dvh - 380px))",
-        aspectRatio: "1 / 1",
-      }}>
-        <Dial
-          phase={phase}
-          durationSec={durationSec}
-          remainingSec={remainingSec}
-          pulseCenter={phase === "paused"}
-          onTapCenter={beginEdit}
-          centerNode={
-            <CenterTime
-              sec={centerSec}
-              editing={editing}
-              editValue={editValue}
-              onEditChange={setEditValue}
-              onCommit={commitEdit}
-              onCancel={cancelEdit}
-              editRef={editInputRef}
-            />
-          }
-        />
-      </div>
+      {/* ダイアル — viewport の正中央に絶対配置 (INFO中は非表示) */}
+      {!showInfo && (
+        <div style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "min(calc(100vw - 28px), 420px, calc(100dvh - 380px))",
+          aspectRatio: "1 / 1",
+        }}>
+          <Dial
+            phase={phase}
+            durationSec={durationSec}
+            remainingSec={remainingSec}
+            pulseCenter={phase === "paused"}
+            onTapCenter={beginEdit}
+            centerNode={
+              <CenterTime
+                sec={centerSec}
+                editing={editing}
+                editValue={editValue}
+                onEditChange={setEditValue}
+                onCommit={commitEdit}
+                onCancel={cancelEdit}
+                editRef={editInputRef}
+              />
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -537,6 +560,69 @@ function subCellPlain() {
     letterSpacing: "0.08em",
     color: "var(--ink)",
   };
+}
+
+// ───────────────────────────────────────────────────────────
+// 説明 (タイトルタップで開く)
+// ───────────────────────────────────────────────────────────
+function InfoBody() {
+  const linkStyle = {
+    color: "var(--ink)",
+    textDecoration: "underline",
+    textUnderlineOffset: "2px",
+  };
+  return (
+    <div className="font-akkurat" style={{
+      flex: "1 1 auto",
+      minHeight: 0,
+      overflowY: "auto",
+      WebkitOverflowScrolling: "touch",
+      padding: "20px 6px 24px",
+      fontSize: 15,
+      lineHeight: 1.75,
+      color: "var(--ink)",
+      letterSpacing: "0.01em",
+    }}>
+      <p style={{ marginTop: 0 }}>
+        パスタを作る。フレンチプレスでコーヒーを作る。毎日の暮らしの中でタイマーは頻繁に使ってるんだけど「予告なしにいきなり鳴る」のがなんか嫌だ。
+      </p>
+      <p>
+        そんな気持ちから生まれたのが、この『WARM UP TIMER（ウォームアップタイマー）』です。
+      </p>
+      <p>
+        10秒前からさりげない音が鳴り始めるので、事前準備ができます。ROOSTER（ニワトリ）とPIANO（ピアノ）の２種類から音が選べます。
+      </p>
+      <p>過去３回分の時間が下から選べます。</p>
+      <p>まだ試作なので、ウィンドウを閉じると、音は鳴りません。ご注意ください。</p>
+
+      <hr style={{
+        margin: "22px 0",
+        border: 0,
+        borderTop: "1px solid var(--ink-dim)",
+      }} />
+
+      <p>・このアプリは、TENTの青木が作りました。</p>
+      <p>
+        ・TENTの他のプロジェクト<br />
+        TENTのTEMPO（リンク：{" "}
+        <a href="https://tempo.tent1000.com/" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+          https://tempo.tent1000.com/
+        </a>
+        ）
+      </p>
+      <p>
+        ・お問い合わせ・感想<br />
+        <a href="https://x.com/aoki_TENT" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+          @aoki_tent
+        </a>
+        （リンク：{" "}
+        <a href="https://x.com/aoki_TENT" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+          https://x.com/aoki_TENT
+        </a>
+        ）
+      </p>
+    </div>
+  );
 }
 
 // ───────────────────────────────────────────────────────────
