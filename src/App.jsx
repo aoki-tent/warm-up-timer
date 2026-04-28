@@ -583,7 +583,7 @@ function InfoBody() {
       color: "var(--ink)",
       letterSpacing: "0.01em",
     }}>
-      <p style={{ marginTop: 0 }}>
+      <p style={{ marginTop: 0, marginBottom: "1.8em" }}>
         パスタを作る。フレンチプレスでコーヒーを作る。毎日の暮らしの中でタイマーは頻繁に使ってるんだけど「予告なしにいきなり鳴る」のがなんか嫌だ。
       </p>
       <p>
@@ -592,7 +592,9 @@ function InfoBody() {
       <p>
         10秒前からさりげない音が鳴り始めるので、事前準備ができます。ROOSTER（ニワトリ）とPIANO（ピアノ）の２種類から音が選べます。
       </p>
-      <p>過去３回分の時間が下から選べます。</p>
+      <p style={{ marginBottom: "1.8em" }}>
+        過去３回分の時間が下から選べます。
+      </p>
       <p>まだ試作なので、ウィンドウを閉じると、音は鳴りません。ご注意ください。</p>
 
       <hr style={{
@@ -604,22 +606,15 @@ function InfoBody() {
       <p>・このアプリは、TENTの青木が作りました。</p>
       <p>
         ・TENTの他のプロジェクト<br />
-        TENTのTEMPO（リンク：{" "}
         <a href="https://tempo.tent1000.com/" target="_blank" rel="noopener noreferrer" style={linkStyle}>
-          https://tempo.tent1000.com/
+          TENTのTEMPO
         </a>
-        ）
       </p>
       <p>
         ・お問い合わせ・感想<br />
         <a href="https://x.com/aoki_TENT" target="_blank" rel="noopener noreferrer" style={linkStyle}>
           @aoki_tent
         </a>
-        （リンク：{" "}
-        <a href="https://x.com/aoki_TENT" target="_blank" rel="noopener noreferrer" style={linkStyle}>
-          https://x.com/aoki_TENT
-        </a>
-        ）
       </p>
     </div>
   );
