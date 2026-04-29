@@ -678,7 +678,7 @@ function ModeToggleCell({ label, active, onClick, disabled }) {
       style={{
         background: "transparent",
         border: "none",
-        padding: "16px 14px 6px",     // -1px (上に1px戻す)
+        padding: "15px 14px 7px",     // さらに 1px 上へ
         lineHeight: 1,
         textAlign: "center",
         fontFamily: "inherit",
@@ -802,7 +802,7 @@ function HistoryCell({ sec, active, disabled, borderRight, onClick }) {
         color: active ? "var(--surface)" : disabled ? "var(--ink-dim)" : "var(--ink)",
         border: "none",
         borderRight: borderRight ? "2px solid var(--border)" : "none",
-        padding: "13px 10px 3px",
+        padding: "12px 10px 4px",
         fontFamily: "inherit",
         fontWeight: 700,
         fontSize: 22,
