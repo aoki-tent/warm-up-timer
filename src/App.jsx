@@ -3,7 +3,6 @@ import * as Tone from "tone";
 import { Dial } from "./Dial.jsx";
 import {
   WARMUP_SECONDS,
-  TAIL_TOTAL_SECONDS,
   renderTailBuffer,
   bakeTimerMp3,
 } from "./audio.js";
@@ -161,30 +160,23 @@ export default function App() {
   }, [editing]);
 
   // ── 表示更新ループ (audio.currentTime ベース) ─────
-  // <audio> がバックグラウンドでも独立して再生され続けるので、表示はそれに追従するだけ。
-  // タブ復帰時のズレも自動で正される。
+  // 仕様:
+  //   audio.currentTime = 0                  → タイマー残り durationSec
+  //   audio.currentTime = durationSec - 10   → 残り 10 秒 (警告開始)
+  //   audio.currentTime = durationSec        → 残り 0 (本鳴り = 00:00)
+  //   audio.currentTime > durationSec        → 余韻フェーズ (<audio> は再生継続、UI は finished)
+  // タブ復帰時のズレも audio.currentTime を真値として自動で正される。
   const tickDisplay = useCallback(() => {
     const el = audioElRef.current;
     if (!el) return;
     const cur = el.currentTime;
-    const totalAudio = durationSec + (TAIL_TOTAL_SECONDS - WARMUP_SECONDS);
-    // 残り時間 = 「設定時間 - 現在再生位置」だが、本鳴り(0:00) は durationSec - WARMUP_SECONDS の地点に来る
-    //   → audio.currentTime が durationSec - WARMUP_SECONDS = (durationSec - 10) のとき、本鳴り開始 = 残り 0
-    // ただし表示は countdown 視点で「残り durationSec から始まり 0 で終わる」を維持したい
-    // つまり: 残り表示 = durationSec - audio.currentTime - WARMUP_SECONDS と思いきや、
-    // 違う: 設計を見直す。
-    //
-    // 仕様:
-    //   audio.currentTime = 0         → タイマー残り durationSec (開始直後)
-    //   audio.currentTime = durationSec - WARMUP → 残り WARMUP_SECONDS (警告開始 = 残り 10 秒)
-    //   audio.currentTime = durationSec        → 残り 0 (本鳴り)
-    //   audio.currentTime > durationSec        → 余韻フェーズ
-    //
-    // よって: 残り表示 = max(0, durationSec - audio.currentTime)
     const remaining = Math.max(0, durationSec - cur);
     setRemainingSec(remaining);
 
-    if (el.ended || cur >= totalAudio - 0.01) {
+    if (el.ended || remaining <= 0) {
+      // 00:00 到達と同時に finished へ。Dial の虹色アニメは finished で始まる。
+      // <audio> 側の余韻 (フィナーレ音 + リバーブ ~4秒) は裏で鳴り続け、
+      // 5秒後の自動リセット (handleReset) でクリーンアップされる。
       setPhase("finished");
       return;
     }
