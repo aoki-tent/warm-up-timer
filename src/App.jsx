@@ -3,9 +3,9 @@ import * as Tone from "tone";
 import { Dial } from "./Dial.jsx";
 import {
   WARMUP_SECONDS,
-  PIANO_BM9,
-  HIHAT_SCHEDULE,
-  createInstruments,
+  TAIL_TOTAL_SECONDS,
+  renderTailBuffer,
+  bakeTimerMp3,
 } from "./audio.js";
 
 const MODE_KEY = "warmupTimer.mode"; // "piano" | "rooster"
@@ -20,7 +20,16 @@ const HISTORY_KEY = "preWarningTimer.history";
 const LAST_KEY = "preWarningTimer.lastSetting";
 const DEFAULT_HISTORY = [30, 180, 540];   // 0:30 / 3:00 / 9:00
 const DEFAULT_LAST = 300;                  // 5:00
-const SAMPLE_LOAD_TIMEOUT_MS = 15000;
+
+// vite.config.js で define される (`dev YYYY-MM-DD HH:mm` または `<sha> · YYYY-MM-DD HH:mm`)
+// eslint-disable-next-line no-undef
+const BUILD_VERSION = typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : "unknown";
+
+// 初期 src として使う極短い無音 WAV (dataURI)。
+// iOS Safari は audio.play() がユーザージェスチャ内で「何かしらの src 上で」一度呼ばれることを
+// 要求するので、ブランクではなくこの dataURI を常時セットしておく (リセット時にも戻す)。
+const SILENT_WAV_DATA_URI =
+  "data:audio/wav;base64,UklGRkAAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YR4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 // ───────────────────────────────────────────────────────────
 // 永続化ヘルパ
@@ -75,7 +84,6 @@ function parseMmSs(input) {
   if (!Number.isFinite(num) || num < 0) return null;
   const sec = num % 100;
   const min = Math.floor(num / 100);
-  // 秒部が 60 以上のときは繰り上げて扱う
   return min * 60 + sec;
 }
 
@@ -90,72 +98,57 @@ function loadMode() {
 export default function App() {
   const [phase, setPhase] = useState("idle");
   const [durationSec, setDurationSec] = useState(loadLast);
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [remainingSec, setRemainingSec] = useState(loadLast);
   const [history, setHistory] = useState(loadHistory);
   const [mode, setMode] = useState(loadMode);                // "piano" | "rooster"
   const [showInfo, setShowInfo] = useState(false);
-  const [audioReady, setAudioReady] = useState(false);
-  const [loadStatus, setLoadStatus] = useState("loading");
-  const [, forceTick] = useState(0);
+  const [tailsReady, setTailsReady] = useState(false);
+  const [loadStatus, setLoadStatus] = useState("loading");   // "loading" | "ready" | "error"
+  const [preparing, setPreparing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
 
-  const pianoRef = useRef(null);
-  const hihatClosedRef = useRef(null);
-  const hihatOpenRef = useRef(null);
-  const cluckRef = useRef(null);
-  const crowRef = useRef(null);
-  const reverbRef = useRef(null);
-  const tickStartRef = useRef(null);
-  const pausedAtRef = useRef(null);
-  const pausedAccumRef = useRef(0);
-  const triggeredRef = useRef(new Set());
-  const tickRafRef = useRef(null);
+  // 事前合成テール (mode → AudioBuffer)
+  const tailBufferRef = useRef({ piano: null, rooster: null });
+
+  // <audio> 要素と Blob URL
+  const audioElRef = useRef(null);
+  const blobUrlRef = useRef(null);
+
+  // 表示更新用 rAF
+  const displayRafRef = useRef(null);
   const editInputRef = useRef(null);
-  // rAF ループのクロージャがstaleにならないように mode は ref 経由で読む
-  const modeRef = useRef(mode);
 
-  // ── オーディオ初期化 ──────────────────────────────
+  // ── 初期ロード: テールを事前合成 ──────────────────
   useEffect(() => {
-    const { piano, hihatClosed, hihatOpen, cluck, crow, reverb } = createInstruments();
-    pianoRef.current = piano;
-    hihatClosedRef.current = hihatClosed;
-    hihatOpenRef.current = hihatOpen;
-    cluckRef.current = cluck;
-    crowRef.current = crow;
-    reverbRef.current = reverb;
+    let cancelled = false;
 
-    let timedOut = false;
-    let resolved = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      if (resolved) return;
-      // ピアノが読めていれば piano モードは動く。rooster は cluck/crow が無いと無音。
-      if (piano.loaded) {
-        setLoadStatus("partial");
-        setAudioReady(true);
-      } else {
-        setLoadStatus("loading");
+    (async () => {
+      try {
+        // Tone は内部で AudioContext を作るが、Tone.Offline は OfflineAudioContext を使うので
+        // ユーザージェスチャは不要。リモートのピアノサンプル読み込みも内部で済む。
+        const [piano, rooster] = await Promise.all([
+          renderTailBuffer("piano"),
+          renderTailBuffer("rooster"),
+        ]);
+        if (cancelled) return;
+        tailBufferRef.current = { piano, rooster };
+        setTailsReady(true);
+        setLoadStatus("ready");
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[warmup-timer] failed to render tail buffers:", err);
+        setLoadStatus("error");
       }
-    }, SAMPLE_LOAD_TIMEOUT_MS);
-
-    Tone.loaded().then(() => {
-      resolved = true;
-      if (timedOut) return;
-      clearTimeout(timer);
-      setLoadStatus("ready");
-      setAudioReady(true);
-    });
+    })();
 
     return () => {
-      clearTimeout(timer);
-      piano.dispose();
-      hihatClosed.dispose();
-      hihatOpen.dispose();
-      cluck.dispose();
-      crow.dispose();
-      reverb.dispose();
-      cancelAnimationFrame(tickRafRef.current);
+      cancelled = true;
+      cancelAnimationFrame(displayRafRef.current);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
     };
   }, []);
 
@@ -167,133 +160,142 @@ export default function App() {
     }
   }, [editing]);
 
-  // ── フィナーレ (0:00 で 1 回鳴る音) ────────────────
-  const fireFinale = useCallback(() => {
-    if (modeRef.current === "rooster") {
-      // ROOSTER: コケコッコー!
-      const crow = crowRef.current;
-      if (crow && crow.loaded) {
-        try { crow.stop(); } catch {}
-        crow.start();
-      }
-    } else {
-      // PIANO: Bm9 をアルペジオで下から上へ立ち上げる (90ms スタッガー)
-      const piano = pianoRef.current;
-      if (piano && piano.loaded) {
-        PIANO_BM9.forEach((n, i) => {
-          setTimeout(() => piano.triggerAttack(n), i * 90);
-        });
-      }
-    }
-  }, []);
+  // ── 表示更新ループ (audio.currentTime ベース) ─────
+  // <audio> がバックグラウンドでも独立して再生され続けるので、表示はそれに追従するだけ。
+  // タブ復帰時のズレも自動で正される。
+  const tickDisplay = useCallback(() => {
+    const el = audioElRef.current;
+    if (!el) return;
+    const cur = el.currentTime;
+    const totalAudio = durationSec + (TAIL_TOTAL_SECONDS - WARMUP_SECONDS);
+    // 残り時間 = 「設定時間 - 現在再生位置」だが、本鳴り(0:00) は durationSec - WARMUP_SECONDS の地点に来る
+    //   → audio.currentTime が durationSec - WARMUP_SECONDS = (durationSec - 10) のとき、本鳴り開始 = 残り 0
+    // ただし表示は countdown 視点で「残り durationSec から始まり 0 で終わる」を維持したい
+    // つまり: 残り表示 = durationSec - audio.currentTime - WARMUP_SECONDS と思いきや、
+    // 違う: 設計を見直す。
+    //
+    // 仕様:
+    //   audio.currentTime = 0         → タイマー残り durationSec (開始直後)
+    //   audio.currentTime = durationSec - WARMUP → 残り WARMUP_SECONDS (警告開始 = 残り 10 秒)
+    //   audio.currentTime = durationSec        → 残り 0 (本鳴り)
+    //   audio.currentTime > durationSec        → 余韻フェーズ
+    //
+    // よって: 残り表示 = max(0, durationSec - audio.currentTime)
+    const remaining = Math.max(0, durationSec - cur);
+    setRemainingSec(remaining);
 
-  // ── tick ─ mode は ref から読む ────────────────────
-  const tick = useCallback(() => {
-    const now = Date.now();
-    const elapsed = (now - tickStartRef.current - pausedAccumRef.current) / 1000;
-    const remaining = durationSec - elapsed;
-
-    if (remaining <= 0) {
-      setElapsedSec(durationSec);
+    if (el.ended || cur >= totalAudio - 0.01) {
       setPhase("finished");
-      if (!triggeredRef.current.has("__finish__")) {
-        triggeredRef.current.add("__finish__");
-        fireFinale();
-      }
       return;
     }
+    displayRafRef.current = requestAnimationFrame(tickDisplay);
+  }, [durationSec]);
 
-    setElapsedSec(elapsed);
-    forceTick((n) => n + 1);
+  // ── テールを所定オフセットで合成して <audio> をセットアップ ──
+  const prepareAudio = useCallback(async () => {
+    const tail = tailBufferRef.current[mode];
+    if (!tail) throw new Error("tail buffer not ready");
 
-    const m = modeRef.current;
+    // 「警告開始 = 残り WARMUP_SECONDS」になるので、テール開始までの無音 = durationSec - WARMUP_SECONDS
+    const silenceSec = Math.max(0, durationSec - WARMUP_SECONDS);
+    const blob = await bakeTimerMp3(tail, silenceSec, { kbps: 64 });
 
-    if (m === "rooster") {
-      // ROOSTER: 警告開始時 (10秒前) に cluck を 1 回だけ start。
-      // ファイルが 9秒の連続音源なのでループ・再トリガーは不要。
-      const sb = WARMUP_SECONDS;
-      if (sb <= durationSec && remaining <= sb && !triggeredRef.current.has("cl_once")) {
-        triggeredRef.current.add("cl_once");
-        const cluck = cluckRef.current;
-        if (cluck && cluck.loaded) {
-          try { cluck.stop(); } catch {}
-          cluck.start();
-        }
-      }
-    } else {
-      // PIANO: jazz swing hihat
-      HIHAT_SCHEDULE.forEach(({ sb, type }, idx) => {
-        if (sb > durationSec) return;
-        const key = `hh_${idx}`;
-        if (remaining <= sb && !triggeredRef.current.has(key)) {
-          triggeredRef.current.add(key);
-          const synth = type === "open" ? hihatOpenRef.current : hihatClosedRef.current;
-          const dur   = type === "open" ? 0.18 : 0.04;
-          synth?.triggerAttackRelease(dur);
-        }
-      });
+    // 前回の Blob URL があれば解放
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
     }
+    const url = URL.createObjectURL(blob);
+    blobUrlRef.current = url;
 
-    tickRafRef.current = requestAnimationFrame(tick);
-  }, [durationSec, fireFinale]);
+    const el = audioElRef.current;
+    if (!el) throw new Error("audio element missing");
+    el.src = url;
+    el.load();
+
+    // メタデータ読み込みを待つ (currentTime を 0 に確実にするため)
+    await new Promise((resolve) => {
+      const ok = () => { el.removeEventListener("loadedmetadata", ok); resolve(); };
+      el.addEventListener("loadedmetadata", ok, { once: true });
+      // 既に読み込み済みなら即解決
+      if (el.readyState >= 1) ok();
+    });
+  }, [mode, durationSec]);
 
   // ── ボタンアクション ─────────────────────────────
   const handleStart = useCallback(async () => {
-    await Tone.start();
-    // iOS マナーモード回避: 隠し audio 要素を再生して
-    // オーディオセッションを Ambient → Playback に昇格させる
-    const silent = document.getElementById("ios-mute-bypass");
-    if (silent && silent.paused) {
-      silent.play().catch(() => {});
-    }
-
-    const newHist = updateHistory(durationSec, history);
-    setHistory(newHist);
+    if (!tailsReady || preparing) return;
+    setPreparing(true);
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(newHist));
-      localStorage.setItem(LAST_KEY, String(durationSec));
-      localStorage.setItem(MODE_KEY, mode);
-    } catch {}
+      // iOS Safari: ユーザージェスチャ内で一度 audio.play() を呼んでおくと、
+      // 以後の src 差し替え + play() が許可される。
+      const el = audioElRef.current;
+      if (el) {
+        try { el.muted = true; await el.play(); el.pause(); el.muted = false; } catch {}
+      }
 
-    // 同期的に mode を ref に反映 (rAF ループに正しく届けるため)
-    modeRef.current = mode;
+      // "WAIT…" 表示を React に確実に描画させてからエンコードに入る
+      await new Promise((r) => requestAnimationFrame(() => r()));
 
-    triggeredRef.current = new Set();
-    setElapsedSec(0);
-    setPhase("running");
-    tickStartRef.current = Date.now();
-    pausedAccumRef.current = 0;
-    pausedAtRef.current = null;
-    cancelAnimationFrame(tickRafRef.current);
-    tickRafRef.current = requestAnimationFrame(tick);
-  }, [durationSec, history, mode, tick]);
+      await prepareAudio();
+
+      const newHist = updateHistory(durationSec, history);
+      setHistory(newHist);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(newHist));
+        localStorage.setItem(LAST_KEY, String(durationSec));
+        localStorage.setItem(MODE_KEY, mode);
+      } catch {}
+
+      setRemainingSec(durationSec);
+      setPhase("running");
+
+      if (el) {
+        el.currentTime = 0;
+        await el.play();
+      }
+      cancelAnimationFrame(displayRafRef.current);
+      displayRafRef.current = requestAnimationFrame(tickDisplay);
+    } catch (err) {
+      console.error("[warmup-timer] start failed:", err);
+      setPhase("idle");
+    } finally {
+      setPreparing(false);
+    }
+  }, [tailsReady, preparing, prepareAudio, durationSec, history, mode, tickDisplay]);
 
   const handlePause = useCallback(() => {
     if (phase !== "running") return;
-    pausedAtRef.current = Date.now();
-    cancelAnimationFrame(tickRafRef.current);
+    const el = audioElRef.current;
+    if (el) el.pause();
+    cancelAnimationFrame(displayRafRef.current);
     setPhase("paused");
   }, [phase]);
 
   const handleResume = useCallback(() => {
     if (phase !== "paused") return;
-    pausedAccumRef.current += Date.now() - pausedAtRef.current;
-    pausedAtRef.current = null;
+    const el = audioElRef.current;
+    if (el) el.play().catch(() => {});
     setPhase("running");
-    tickRafRef.current = requestAnimationFrame(tick);
-  }, [phase, tick]);
+    displayRafRef.current = requestAnimationFrame(tickDisplay);
+  }, [phase, tickDisplay]);
 
   const handleReset = useCallback(() => {
-    cancelAnimationFrame(tickRafRef.current);
-    if (pianoRef.current) pianoRef.current.releaseAll();
-    try { cluckRef.current?.stop(); } catch {}
-    try { crowRef.current?.stop(); } catch {}
-    triggeredRef.current = new Set();
-    setElapsedSec(0);
-    pausedAtRef.current = null;
-    pausedAccumRef.current = 0;
+    cancelAnimationFrame(displayRafRef.current);
+    const el = audioElRef.current;
+    if (el) {
+      el.pause();
+      // 無音 dataURI に戻して、次回 START 時のユーザージェスチャ play() が成功するようにしておく
+      el.src = SILENT_WAV_DATA_URI;
+      el.load();
+    }
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+    setRemainingSec(durationSec);
     setPhase("idle");
-  }, []);
+  }, [durationSec]);
 
   // ── finished から 5 秒で idle に自動復帰 ────────────
   useEffect(() => {
@@ -303,7 +305,6 @@ export default function App() {
   }, [phase, handleReset]);
 
   // ── Screen Wake Lock: 実行中は画面スリープを抑止 ────
-  // iOS Safari 16.4+ / Chrome / Edge で動作。未対応ブラウザでは黙って no-op。
   useEffect(() => {
     if (phase !== "running") return;
     if (typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
@@ -325,7 +326,6 @@ export default function App() {
     };
 
     const handleVisibilityChange = () => {
-      // タブが見えなくなると wake lock は自動 release されるので、復帰時に取り直す
       if (document.visibilityState === "visible" && !cancelled) {
         acquire();
       }
@@ -342,6 +342,19 @@ export default function App() {
     };
   }, [phase]);
 
+  // ── タブ復帰時に表示を即同期 ────────────────────────
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && phase === "running") {
+        // rAF を再起動して即座に audio.currentTime に合わせる
+        cancelAnimationFrame(displayRafRef.current);
+        displayRafRef.current = requestAnimationFrame(tickDisplay);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [phase, tickDisplay]);
+
   // ── 数値入力モード ─────────────────────────────
   const beginEdit = () => {
     setEditValue(fmtMMSS(durationSec));
@@ -352,7 +365,9 @@ export default function App() {
     if (parsed != null) {
       const clamped = Math.max(MIN_DURATION, Math.min(MAX_DURATION, parsed));
       const snapped = Math.round(clamped / SNAP_SEC) * SNAP_SEC;
-      setDurationSec(Math.max(MIN_DURATION, Math.min(MAX_DURATION, snapped)));
+      const next = Math.max(MIN_DURATION, Math.min(MAX_DURATION, snapped));
+      setDurationSec(next);
+      setRemainingSec(next);
     }
     setEditing(false);
   };
@@ -361,28 +376,26 @@ export default function App() {
   const handleHistoryClick = (sec) => {
     if (phase !== "idle") return;
     const clamped = Math.max(MIN_DURATION, Math.min(MAX_DURATION, sec));
-    setDurationSec(Math.round(clamped / SNAP_SEC) * SNAP_SEC);
+    const next = Math.round(clamped / SNAP_SEC) * SNAP_SEC;
+    setDurationSec(next);
+    setRemainingSec(next);
   };
 
   // ── 表示計算 ────────────────────────────────────
-  const remainingSec =
-    phase === "running" || phase === "paused"
-      ? Math.max(0, durationSec - elapsedSec)
-      : phase === "finished"
-        ? 0
-        : durationSec;
-
   const centerSec =
     phase === "running" || phase === "paused" ? remainingSec
     : phase === "finished"                    ? 0
     :                                            durationSec;
 
   // ── ボタンの状態別ラベル/ハンドラ ──────────────
+  const startDisabled = !tailsReady || preparing || loadStatus === "error";
+  const startLabel = preparing ? "WAIT…" : "START";
+
   const primary =
-    phase === "idle"     ? { label: "START",   on: handleStart,    disabled: !audioReady }
-  : phase === "running"  ? { label: "PAUSE",   on: handlePause,    disabled: false }
-  : phase === "paused"   ? { label: "RESUME",  on: handleResume,   disabled: false }
-  :                        { label: "START",   on: handleStart,    disabled: !audioReady };
+    phase === "idle"     ? { label: startLabel, on: handleStart,  disabled: startDisabled }
+  : phase === "running"  ? { label: "PAUSE",    on: handlePause,  disabled: false }
+  : phase === "paused"   ? { label: "RESUME",   on: handleResume, disabled: false }
+  :                        { label: startLabel, on: handleStart,  disabled: startDisabled };
 
   const secondary =
     phase === "idle"     ? { label: "RESET", on: () => {},        disabled: true }
@@ -404,24 +417,19 @@ export default function App() {
       position: "relative",
       boxSizing: "border-box",
     }}>
-      {/* iOS マナーモード回避: 無音ループを再生して audio session を Playback 扱いに */}
+      {/* バックグラウンド再生対応: タイマー音は事前合成 MP3 を 1 本の <audio> で流す。
+          初期 src は無音 WAV (dataURI) — iOS が要求するユーザージェスチャ内 play() を担保する。 */}
       <audio
-        id="ios-mute-bypass"
-        loop
+        ref={audioElRef}
         playsInline
         preload="auto"
-        src="data:audio/wav;base64,UklGRkAAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YR4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        src={SILENT_WAV_DATA_URI}
         style={{ display: "none" }}
       />
-      {/* 上下にピン留めされた帯 (header+sub / buttons+history)。
-          space-between で上下を画面の端に貼り付ける。
-          INFO 表示中は上をヘッダーのみ + 説明文 (flex:1) に切り替え。 */}
       <div style={{
         maxWidth: 420,
         margin: "0 auto",
         height: "100%",
-        // PWA (ホーム画面起動) では URL バーが消えてレイアウトが画面端まで広がるので、
-        // status bar / home indicator の safe-area inset を padding に足して避ける。
         paddingTop:    "calc(12px + env(safe-area-inset-top))",
         paddingRight:  "calc(14px + env(safe-area-inset-right))",
         paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
@@ -438,7 +446,6 @@ export default function App() {
           borderBottom: "2px solid var(--border)",
           flex: "0 0 auto",
         }}>
-          {/* WARM UP TIMER (タップで INFO 表示切替) */}
           <button
             type="button"
             onClick={() => setShowInfo((v) => !v)}
@@ -448,7 +455,7 @@ export default function App() {
               background: "transparent",
               border: "none",
               borderBottom: showInfo ? "none" : "2px solid var(--border)",
-              padding: "10px 4px",   // 上下14→10 で WARM UP セルを 8px 詰める
+              padding: "10px 4px",
               cursor: "pointer",
               outline: "none",
               fontFamily: "inherit",
@@ -458,18 +465,17 @@ export default function App() {
               margin: 0,
               textAlign: "center",
               fontWeight: 800,
-              fontSize: "clamp(46px, 13vw, 64px)",   // 1.2倍 (38→46 / 10.8vw→13vw / 53→64)
+              fontSize: "clamp(46px, 13vw, 64px)",
               letterSpacing: "0.02em",
               color: "var(--ink)",
               lineHeight: 1,
-              paddingTop: "0.28em",   // em ベースなので拡大しても中央配置キープ
+              paddingTop: "0.28em",
               paddingBottom: "0.04em",
             }}>
               WARM UP TIMER
             </h1>
           </button>
 
-          {/* sub-row: ROOSTER | PIANO トグル (INFO中は非表示) */}
           {!showInfo && (
             <div style={{
               display: "grid",
@@ -489,7 +495,6 @@ export default function App() {
                 onClick={() => handleModeChange("piano")}
                 disabled={phase !== "idle"}
               />
-              {/* 短い縦線 (上下の横線に届かない高さ) */}
               <div style={{
                 position: "absolute",
                 left: "50%",
@@ -505,11 +510,9 @@ export default function App() {
         </div>
 
         {showInfo ? (
-          <InfoBody />
+          <InfoBody version={BUILD_VERSION} />
         ) : (
           <>
-            {/* ダイアル — flex フロー内の中央 item として配置。
-                上下のアイテム (top group / bottom group) と space-between で均等な間隔。 */}
             <div style={{
               width: "min(100%, 420px, calc(100dvh - 380px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))",
               margin: "0 auto",
@@ -536,9 +539,7 @@ export default function App() {
               />
             </div>
 
-            {/* 下ブロック: Buttons + History */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "0 0 auto" }}>
-              {/* ボタン群 */}
               <div style={{
                 ...boxStyle(),
                 display: "grid",
@@ -548,7 +549,6 @@ export default function App() {
                 <ActionButton {...secondary} />
               </div>
 
-              {/* 履歴 */}
               <div style={{
                 ...boxStyle(),
                 display: "grid",
@@ -584,33 +584,10 @@ function boxStyle(extra = {}) {
   };
 }
 
-function subCell({ borderRight = false } = {}) {
-  return {
-    padding: "12px 14px",
-    textAlign: "center",
-    fontWeight: 500,
-    fontSize: 19,
-    letterSpacing: "0.08em",
-    color: "var(--ink)",
-    borderRight: borderRight ? "2px solid var(--border)" : "none",
-  };
-}
-
-function subCellPlain() {
-  return {
-    padding: "0 14px",
-    textAlign: "center",
-    fontWeight: 500,
-    fontSize: 19,
-    letterSpacing: "0.08em",
-    color: "var(--ink)",
-  };
-}
-
 // ───────────────────────────────────────────────────────────
 // 説明 (タイトルタップで開く)
 // ───────────────────────────────────────────────────────────
-function InfoBody() {
+function InfoBody({ version }) {
   const linkStyle = {
     color: "var(--ink)",
     textDecoration: "underline",
@@ -640,7 +617,7 @@ function InfoBody() {
       <p style={{ marginBottom: "1.8em" }}>
         過去３回分の時間が下から選べます。
       </p>
-      <p>まだ試作なので、ウィンドウを閉じると、音は鳴りません。ご注意ください。</p>
+      <p>画面OFFや別アプリ表示中でも音が鳴ります。</p>
 
       <hr style={{
         margin: "22px 0",
@@ -661,6 +638,17 @@ function InfoBody() {
           @aoki_tent
         </a>
       </p>
+
+      <p style={{
+        marginTop: "2.5em",
+        marginBottom: 0,
+        fontSize: 11,
+        color: "var(--ink-dim)",
+        letterSpacing: "0.04em",
+        opacity: 0.7,
+      }}>
+        build {version}
+      </p>
     </div>
   );
 }
@@ -678,7 +666,7 @@ function ModeToggleCell({ label, active, onClick, disabled }) {
       style={{
         background: "transparent",
         border: "none",
-        padding: "15px 14px 7px",     // さらに 1px 上へ
+        padding: "15px 14px 7px",
         lineHeight: 1,
         textAlign: "center",
         fontFamily: "inherit",
@@ -730,7 +718,6 @@ function CenterTime({ sec, editing, editValue, onEditChange, onCommit, onCancel,
     );
   }
 
-  // m / s に分割してコロンを別 span で持ち、上下中央へずらす
   const ss = Math.max(0, Math.floor(sec));
   const mm = Math.floor(ss / 60).toString().padStart(2, "0");
   const rr = (ss % 60).toString().padStart(2, "0");
@@ -742,15 +729,12 @@ function CenterTime({ sec, editing, editValue, onEditChange, onCommit, onCancel,
       color: "var(--ink)",
       letterSpacing: "0.01em",
       fontVariantNumeric: "tabular-nums",
-      // DIN Condensed Bold は ascender が高く descender がほぼ無いため、
-      // flex center だと数字が光学的に上寄りになる。少しだけ下に押し下げる。
       paddingTop: "0.18em",
       display: "inline-flex",
       alignItems: "center",
     }}>
       <span>{mm}</span>
       <span style={{
-        // DIN Condensed Bold のコロンは数字の縦中央より下にあるため、上に持ち上げる
         display: "inline-block",
         transform: "translateY(-0.20em)",
         margin: "0 0.02em",
@@ -761,7 +745,7 @@ function CenterTime({ sec, editing, editValue, onEditChange, onCommit, onCancel,
 }
 
 // ───────────────────────────────────────────────────────────
-// アクションボタン (START / PAUSE / RESUME / REPLAY / RESET / NEW)
+// アクションボタン (START / PAUSE / RESUME / RESET / NEW)
 // ───────────────────────────────────────────────────────────
 function ActionButton({ label, on, disabled, borderRight = false }) {
   return (
